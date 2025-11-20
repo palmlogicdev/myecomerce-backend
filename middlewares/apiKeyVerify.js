@@ -4,6 +4,7 @@ const API_KEY = process.env.API_KEY;
 
 const apiKeyVerify = (req, res, next) => {
     const xApiKey = req.headers['x-api-key'];
+    console.log(xApiKey);
 
     if (API_KEY !== xApiKey) {
         res.status(403).json({

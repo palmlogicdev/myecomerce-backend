@@ -307,6 +307,28 @@ class MyAPI {
             };
         }
     }
+
+    async getAllProduct() {
+        try {
+            const snapshot = await productsCollection.get();
+
+            const products = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+
+            return {
+                success: true,
+                products
+            }
+        } catch (error) {
+            console.log('Get all product :', error);
+            return {
+                success: false,
+                errorMessage: error.message
+            }
+        }
+    }
 }
 
 module.exports = MyAPI;

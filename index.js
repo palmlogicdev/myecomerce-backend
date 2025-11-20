@@ -33,7 +33,7 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 app.use(express.json());
 app.use(cors({
-    origin: 'http://localhost:5173', // หรือ '*' เพื่ออนุญาตทุกที่
+    origin: ['http://localhost:5173', 'http://127.0.0.1:5500'],
     methods: ['GET','POST','PUT','DELETE'],
     credentials: true
 }));
@@ -59,7 +59,7 @@ function generateToken(user) {
 
 //* create user
 //? status : good
-app.post('/api/creatUser', apiKeyVerify, async (req, res) => {
+app.post('/api/createUser', apiKeyVerify, async (req, res) => {
     try {
         const { firstname, lastname, phoneNumber, email, gender, country, province, address, password } = req.body;
         const apiRes = await MyAPI.createUser({ firstname, lastname, phoneNumber, email, gender, country, province, address, password });
@@ -78,14 +78,14 @@ app.post('/api/creatUser', apiKeyVerify, async (req, res) => {
 //* create product
 //? status : good
 app.post('/api/createProduct', apiKeyVerify, async (req, res) => {
+    console.log('createProduct');
     try {
-        const { product_name, price, stocks, image, desciption, category_id } = req.body;
-        const apiRes = await MyAPI.createProduct({ product_name, price, stocks, image, desciption, category_id });
+        const { product_name, price, stocks, image, description, category_id } = req.body;
+        console.log({ product_name, price, stocks, image, description, category_id });
+        const apiRes = await MyAPI.createProduct({ product_name, price, stocks, image, description, category_id });
         
         if (apiRes.success) {
             res.status(200).json(apiRes);
-        } else {
-            res.status(400).json(apiRes);
         }
     } catch (error) {
         console.log('/api/createProduct => ', error);
@@ -96,6 +96,7 @@ app.post('/api/createProduct', apiKeyVerify, async (req, res) => {
 //* create category
 //! status : in maintainace do not use
 app.post('/api/createCategory', apiKeyVerify, async (req, res) => {
+    console.log('createCategory');
     try {
         const { category_name, description } = req.body;
         const apiRes = await MyAPI.createCategory({ category_name, description });
@@ -173,9 +174,8 @@ app.post('/api/login', apiKeyVerify, async (req, res) => {
 
 //* logout
 //? status : good
-app.post('/api/logout', verifyToken, async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader.split(' ')[1];
+app.get('/api/logout', verifyToken, async (req, res) => {
+    const token = req.cookies.token;
 
     res.cookie('token', '', {
         httpOnly: true,
@@ -214,6 +214,17 @@ app.post('/api/createCarts', verifyToken, async (req, res) => {
     }
 });
 
+app.get('/api/getAllProduct', apiKeyVerify, (req, res) => {
+    try {
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            errorMessage: error.message
+        })
+    }
+});
+
 app.get('/api/check-token', async (req, res) => {
     const token = req.cookies.token;
     if (!token) {
@@ -229,7 +240,29 @@ app.get('/api/check-token', async (req, res) => {
     } catch (error) {
         return res.json({ authenticated: false });
     }
-})
+});
+
+app.get('/api/getCart', verifyToken, async (req, res) => {
+    const user_id = req.user.id;
+
+    try {
+        const apiRes = await MyAPI.getCartBy('user_id', user_id);
+        const cartItem = (apiRes && apiRes.length > 0) ? apiRes[0].item || [] : [];
+
+        return res.status(200).json({
+            success: true,
+            successMessage: "Cart retrieved successfully",
+            data: cartItem
+        });
+    } catch (error) {
+        console.log('/api/getCart => ', error);
+        return res.status(500).json({
+            success: false,
+            errorMessage: "Cannot get cart",
+            detail: error.message
+        });
+    }
+});
 // app.post('/api/createOrders')
 
 app.listen(PORT, () => {
