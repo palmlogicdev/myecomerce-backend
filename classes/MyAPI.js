@@ -1,13 +1,16 @@
 const db = require('../config/firebase.js');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const { addAbortListener } = require('events');
 
 const usersCollection = db.collection('users');
 const productsCollection = db.collection('products');
 const categoryCollection = db.collection('category');
+const cartCollection = db.collection('carts');
+const blacklist_tokenCollection = db.collection('blacklist_token');
 
 let user = {
-    firstname: '',
+    firstname: '', 
     lastname: '',
     phoneNumber: '',
     email: '',
@@ -37,7 +40,13 @@ let product = {
 let category = {
     category_name: '',
     description: ''
-}
+};
+
+let cart = {
+    item: [
+    ],
+    user_id: ''
+};
 
 const error_empty_message = {
     success: false,
@@ -91,7 +100,10 @@ class MyAPI {
 
         } catch (error) {
             console.log('CreateUser: ', error);
-            return error;
+            return {
+                success: false,
+                errorMessage: "Can not create user please try again"
+            };
         }
     }
 
@@ -113,7 +125,10 @@ class MyAPI {
             }
         } catch (error) {
             console.log('Create product: ', error);
-            return error;
+            return {
+                success: false,
+                errorMessage: "Can not create product, Please check server"
+            };
         }
     }
 
@@ -134,7 +149,10 @@ class MyAPI {
             }
         }catch (error) {
             console.log('Create category: ', error);
-            return error;
+            return {
+                success: false,
+                errorMessage: "Can not create category, Please check server"
+            };
         }
     }
  
@@ -154,7 +172,10 @@ class MyAPI {
             }
         } catch (error) {
             console.log('upload image: ', error);
-            return error;
+            return {
+                success: false,
+                errorMessage: "Can not upload photo, Please try again"
+            }
         }
     }
 
@@ -167,7 +188,10 @@ class MyAPI {
             return { id: user.id, ...user.data() };
         } catch (error) {
             console.log('get user by: ', error);
-            return [];
+            return {
+                success: false,
+                errorMessage: "Can not get user, Please try again"
+            }
         }
     }
 
@@ -176,6 +200,113 @@ class MyAPI {
         return isMatch;
     }
 
+    async getCartBy(order, param) {
+        try {
+            const snapshot = await cartCollection.where(order, '==', param).orderBy(order).get();
+
+            const cart = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+
+            return cart;
+        } catch (error) {
+            console.log('get cart by : ', error);
+            return {
+                success: false,
+                errorMessage: "Can not get cart, Please try again"
+            }
+        }
+    }
+
+    async createCart({ user_id, items}) {
+        try {
+            const data = await this.getCartBy('user_id', user_id);
+
+            if (data.length === 0 ) {
+                cart.user_id = user_id;
+
+                cart.item = items.map(item => {
+                    return {
+                        product_id: item.product_id,
+                        quantity: item.quantity
+                    };
+                });
+
+                const snapshot = await cartCollection.add(cart);
+                console.log("Created cart : ", cart);
+
+                return snapshot.id;
+            } else {
+                const dbCart = data[0];
+                const user_id = dbCart.user_id;
+                const item = dbCart.item || [];
+
+                cart.user_id = user_id;
+                cart.item = item;
+                console.log('items from dbCart.item: ', item);
+
+                console.log('cart item : ', cart);
+
+                items.forEach(newItem => {
+                    const index = cart.item.findIndex(i => i.product_id === newItem.product_id);
+                    console.log(index);
+
+                    if (index !== -1) {
+                        cart.item[index].quantity += newItem.quantity;
+                    } else {
+                        cart.item.push({
+                            product_id: newItem.product_id,
+                            quantity: newItem.quantity
+                        });
+                    }
+                });
+                
+                console.log('Cart updated : ', cart);
+                const docRef = cartCollection.doc(dbCart.id);
+                docRef.update({
+                    item : cart.item
+                });
+
+                cart.item = [];
+                cart.user_id = '';
+
+                return {
+                    success: true,
+                    successMessage: "Update cart successfully"
+                }
+            }
+        } catch (error) {
+            consoleg.log("create cart : ", error);
+            return {
+                success: false,
+                errorMessage: 'Can not update cart'
+            }
+        }
+    }
+
+    async logout(token) {
+        try {
+
+            const tokenHash = crypto.createHash('sha256').update(token, 'utf8').digest('hex');
+
+            const newRovoke = {
+                revoked_at: Date.now()
+            };
+
+            await blacklist_tokenCollection.doc(tokenHash).set(newRovoke);
+            return {
+                success: true,
+                successMessage: "Logged out successfully"
+            }
+        } catch (error) {
+            console.log('Logout : ', error);
+            return {
+                success: false,
+                errorMessage: "Can not logout, Please check server"
+            };
+        }
+    }
 }
 
 module.exports = MyAPI;

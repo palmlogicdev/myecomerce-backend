@@ -32,7 +32,11 @@ const upload = multer({ storage })
 const PORT = process.env.PORT || 3000;
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: 'http://localhost:5173', // หรือ '*' เพื่ออนุญาตทุกที่
+    methods: ['GET','POST','PUT','DELETE'],
+    credentials: true
+}));
 app.use('/api/uploads', express.static('uploads'));
 app.use(cookieParser());
 
@@ -134,7 +138,7 @@ app.post('/api/login', apiKeyVerify, async (req, res) => {
         console.log(user);
 
         if (user.length === 0) {
-            res.status(404).json({
+            return res.status(404).json({
                 success: false,
                 errorMessage: "Can not find your email, Please check"
             });
@@ -142,7 +146,7 @@ app.post('/api/login', apiKeyVerify, async (req, res) => {
 
         const isValid = await MyAPI.comparePassword(password, user.password);
         if (!isValid) {
-            res.status(400).json({
+            return res.status(400).json({
                 success: false,
                 errorMessage: "Invalid password"
             })
@@ -169,24 +173,64 @@ app.post('/api/login', apiKeyVerify, async (req, res) => {
 
 //* logout
 //? status : good
-app.post('/api/logout', verifyToken, (req, res) => {
+app.post('/api/logout', verifyToken, async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader.split(' ')[1];
+
     res.cookie('token', '', {
         httpOnly: true,
         secure: false,
         maxAge: 0
     });
 
-    res.status(200).json({
-        success: true,
-        successMessage: "Logged out successfully"
-    });
+    const apiRes = await MyAPI.logout(token);
+
+    if (apiRes.success) {
+        return res.status(200).json(apiRes);
+    } else {
+        return res.status(400).json(apiRes);
+    }
 });
 
 /*
- TODO: write a app.post createCarts
- TODO: create collection orders, order_items, payments, shipping
+ * write a app.post createCarts
+ * create collection orders, order_items, payments, shipping
  TODO: write a app.post orders, order_items, payments, shipping
 */
+
+//* create cart
+//? status : good
+app.post('/api/createCarts', verifyToken, async (req, res) => {
+    const user_id = req.user.id;
+    const items = req.body;
+    console.log(items);
+
+    const apiRes = await MyAPI.createCart({user_id, items});
+    
+    if (apiRes.success) {
+        return res.status(200).json(apiRes);
+    } else {
+        return res.status(400).json(apiRes);
+    }
+});
+
+app.get('/api/check-token', async (req, res) => {
+    const token = req.cookies.token;
+    if (!token) {
+        return res.status(404).json({
+            success: false,
+            errorMessage: "Token not found, Please login"
+        });
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_KEY);
+        return res.json({ authenticated: true, user: decoded });
+    } catch (error) {
+        return res.json({ authenticated: false });
+    }
+})
+// app.post('/api/createOrders')
 
 app.listen(PORT, () => {
     console.log(`App is running on http://localhost:${PORT}`);
