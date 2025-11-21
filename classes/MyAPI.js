@@ -42,12 +42,6 @@ let category = {
     description: ''
 };
 
-let cart = {
-    item: [
-    ],
-    user_id: ''
-};
-
 const error_empty_message = {
     success: false,
     errorMessage: "Required field is missing. Please provide all necessary input."
@@ -203,7 +197,10 @@ class MyAPI {
     async getCartBy(order, param) {
         try {
             const snapshot = await cartCollection.where(order, '==', param).orderBy(order).get();
-
+            
+            if (snapshot.empty) {
+                return [];
+            }
             const cart = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
@@ -212,20 +209,22 @@ class MyAPI {
             return cart;
         } catch (error) {
             console.log('get cart by : ', error);
-            return {
-                success: false,
-                errorMessage: "Can not get cart, Please try again"
-            }
+            return [];
         }
     }
 
     async createCart({ user_id, items}) {
         try {
+            let cart = {
+                item: [
+                ],
+                user_id: ''
+            };
+
             const data = await this.getCartBy('user_id', user_id);
 
             if (data.length === 0 ) {
                 cart.user_id = user_id;
-
                 cart.item = items.map(item => {
                     return {
                         product_id: item.product_id,
@@ -236,7 +235,11 @@ class MyAPI {
                 const snapshot = await cartCollection.add(cart);
                 console.log("Created cart : ", cart);
 
-                return snapshot.id;
+                return {
+                    success: true,
+                    successMessage: 'Create cart successfully',
+                    id: snapshot.id
+                };
             } else {
                 const dbCart = data[0];
                 const user_id = dbCart.user_id;
@@ -277,7 +280,7 @@ class MyAPI {
                 }
             }
         } catch (error) {
-            consoleg.log("create cart : ", error);
+            console.log("create cart : ", error);
             return {
                 success: false,
                 errorMessage: 'Can not update cart'
@@ -319,7 +322,7 @@ class MyAPI {
 
             return {
                 success: true,
-                products
+                data: products
             }
         } catch (error) {
             console.log('Get all product :', error);
@@ -327,6 +330,58 @@ class MyAPI {
                 success: false,
                 errorMessage: error.message
             }
+        }
+    }
+
+    async getProductBy(items) {
+        try {
+            console.log('items: ', items);
+            const productIdArray = items.map(i => i.product_id);
+            console.log('product_id: ', productIdArray);
+
+            const docRef = productIdArray.map(id => productsCollection.doc(id));
+            const snapshot = await productsCollection.firestore.getAll(...docRef);
+
+            if (snapshot.empty) return [];
+            console.log(snapshot.docs);
+
+            const products = snapshot.map(doc => {
+                const cartItems = items.find(item => item.product_id === doc.id);
+                return {
+                    id: doc.id,
+                    ...doc.data(),
+                    quantity: cartItems ? cartItems.quantity : 0
+                };
+            }).filter(p => p !== null);
+
+            console.log('products :', products);
+            return products;
+        } catch (error) {
+            console.log('getProductBy error:', error);
+            return [];
+        }
+    }
+
+    async deleteCart(product_id, user_id) {
+        try {
+            const snapshot = await cartCollection.where('user_id', '==', user_id).get();
+
+            if (snapshot.empty) return { success: false, errorMessage: 'Cart not found' };
+
+            const cartDoc = snapshot.docs[0];
+            const cartData = cartDoc.data();
+
+            const updateItems = cartData.item.filter(i => i.product_id !== product_id);
+
+            await cartCollection.doc(cartDoc.id).update({ item: updateItems });
+
+            return {
+                success: true,
+                successMessage: "Delete cart"
+            }
+        } catch (error) {
+            console.log('deleteCart error: ', error);
+            return [];
         }
     }
 }

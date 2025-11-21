@@ -94,7 +94,7 @@ app.post('/api/createProduct', apiKeyVerify, async (req, res) => {
 });
 
 //* create category
-//! status : in maintainace do not use
+//? status : good
 app.post('/api/createCategory', apiKeyVerify, async (req, res) => {
     console.log('createCategory');
     try {
@@ -113,7 +113,7 @@ app.post('/api/createCategory', apiKeyVerify, async (req, res) => {
 })
 
 //* upload image
-//! status : no test yet do not use
+//? status : good
 app.post('/api/uploadImage', upload.single('image'), async (req, res) => {
     try {
         const apiRes = await MyAPI.upload(req);
@@ -200,13 +200,13 @@ app.get('/api/logout', verifyToken, async (req, res) => {
 
 //* create cart
 //? status : good
-app.post('/api/createCarts', verifyToken, async (req, res) => {
+app.post('/api/createCart', verifyToken, async (req, res) => {
     const user_id = req.user.id;
-    const items = req.body;
+    const items = req.body.item;
     console.log(items);
 
     const apiRes = await MyAPI.createCart({user_id, items});
-    
+    console.log(apiRes);
     if (apiRes.success) {
         return res.status(200).json(apiRes);
     } else {
@@ -214,9 +214,14 @@ app.post('/api/createCarts', verifyToken, async (req, res) => {
     }
 });
 
-app.get('/api/getAllProduct', apiKeyVerify, (req, res) => {
+//* get all products
+//? status : good
+app.get('/api/getAllProducts', apiKeyVerify, async (req, res) => {
     try {
-
+        const apiRes = await MyAPI.getAllProduct();
+        if (apiRes.success) {
+            res.status(200).json(apiRes);
+        }
     } catch (error) {
         res.status(500).json({
             success: false,
@@ -225,6 +230,33 @@ app.get('/api/getAllProduct', apiKeyVerify, (req, res) => {
     }
 });
 
+//* get product by
+//! status : in dev
+app.post('/api/getProduct', verifyToken, async (req, res) => {
+    try {
+        const items = req.body;
+        console.log(items);
+        if (!items || !items.length) {
+            return res.status(400).json({
+                success: false,
+                errorMessage: "No items provided"
+            });
+        }
+
+        const apiRes = await MyAPI.getProductBy(items);
+        console.log(apiRes);
+
+        res.status(200).json(apiRes);
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            errorMessage: error.message
+        });
+    }
+});
+
+//* check token
+//? status : good
 app.get('/api/check-token', async (req, res) => {
     const token = req.cookies.token;
     if (!token) {
@@ -242,6 +274,8 @@ app.get('/api/check-token', async (req, res) => {
     }
 });
 
+//* get cart
+//? status : good
 app.get('/api/getCart', verifyToken, async (req, res) => {
     const user_id = req.user.id;
 
@@ -263,6 +297,26 @@ app.get('/api/getCart', verifyToken, async (req, res) => {
         });
     }
 });
+
+//* delete cart
+//! status : in dev
+app.delete('/api/deleteCart', verifyToken, async (req, res) => {
+    const product_id = req.body.product_id;
+    const user_id = req.user.id;
+
+    try {
+        const apiRes = await MyAPI.deleteCart(product_id, user_id);
+        if (apiRes.success) {
+            res.status(200).json(apiRes);
+        }
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            errorMessage: error.message
+        });
+    }
+});
+
 // app.post('/api/createOrders')
 
 app.listen(PORT, () => {
