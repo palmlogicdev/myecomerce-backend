@@ -27,17 +27,16 @@ async function verifyToken (req, res, next) {
         console.log('blacklist data', blacklist.data());
         console.log('blacklist: ', blacklist.exists);
         if (blacklist.exists) {
-            return res.status(401).json({ errorMessage: "Token has been revoke" });
+            return res.status(401).json({ message: "Token has been revoke" });
         }
 
         const decoded = jwt.verify(token, secret);
-        console.log(decoded);
         req.user = decoded;
         next();
     } catch (error) {
         return res.status(401).json({
             success: false,
-            errorMessage: "Invalid Token"
+            message: "Invalid Token"
         });
    }
 }

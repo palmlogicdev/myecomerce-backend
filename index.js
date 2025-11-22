@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const apiKeyVerify = require('./middlewares/apiKeyVerify.js');
+const verifyApiKey = require('./middlewares/verifyApiKey.js');
 const verifyToken = require('./middlewares/verifyToken.js');
 const MyAPIClass = require('./classes/MyAPI.js');
 const multer = require('multer');
@@ -9,6 +9,8 @@ const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { secret, expiresIn } = require('./config/jwt.js');
 const cookieParser = require('cookie-parser');
+const logger = require('./config/winston.js');
+const requrestLogger = require('./middlewares/logger.js');
 
 const uploadDir = './uploads';
 if (!fs.existsSync(uploadDir)) {
@@ -32,6 +34,7 @@ const upload = multer({ storage })
 const PORT = process.env.PORT || 3000;
 const app = express();
 app.use(express.json());
+app.use(requrestLogger);
 app.use(cors({
     origin: ['http://localhost:5173', 'http://127.0.0.1:5500'],
     methods: ['GET','POST','PUT','DELETE'],
@@ -44,7 +47,7 @@ const MyAPI = new MyAPIClass;
 
 const serverErrorMessage = {
     success: false,
-    errorMessage: "Server failed, Please try again later"
+    message: "Server failed, Please try again later"
 }
 
 function generateToken(user) {
@@ -54,30 +57,105 @@ function generateToken(user) {
         role: user.role
     };
 
+    logger.info(`Generate token ${JSON.stringify(payload)}`);
+
     return jwt.sign(payload, secret, {expiresIn});
 }
 
+app.post('/api/test', verifyApiKey, async (req, res) => {
+    const email = req.body.email;
+    const user = await MyAPI.getUserBy('email', email);
+    const token = generateToken(user);
+});
+
 //* create user
 //? status : good
-app.post('/api/createUser', apiKeyVerify, async (req, res) => {
+app.post('/api/register', verifyApiKey, async (req, res) => {
     try {
         const { firstname, lastname, phoneNumber, email, gender, country, province, address, password } = req.body;
         const apiRes = await MyAPI.createUser({ firstname, lastname, phoneNumber, email, gender, country, province, address, password });
 
-        if (apiRes.success) {
-            res.status(200).json(apiRes);
-        } else {
-            res.status(400).json(apiRes);
+        if (!apiRes.success) {
+            logger.error(apiRes.message);
+            return res.status(400).json(apiRes);
         }
+        
+        req.log.info(apiRes.message);
+        return res.status(200).json(apiRes);
+
     } catch (error) {
-        console.log('/api/createUser => ', error);
+        logger.error(error.message);
+        return res.status(500).json(serverErrorMessage);
+    }
+});
+
+//* login
+//? status : good
+app.post('/api/login', verifyApiKey, async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const user = await MyAPI.getUserBy('email', email);
+
+        logger.info(user);
+
+        if (user.length === 0) {
+            return res.status(404).json({
+                success: false,
+                errorMessage: "Can not find your email, Please check"
+            });
+        }
+
+        const isValid = await MyAPI.comparePassword(password, user.password);
+        if (!isValid) {
+            return res.status(400).json({
+                success: false,
+                errorMessage: "Invalid password"
+            })
+        }
+
+        const token = generateToken(user);
+
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: false,
+            maxAge: 1000 * 60 * 60 * 24
+        });
+
+        res.status(200).json({
+            success: true,
+            successMessage: "Logged in successfully"
+        });
+
+    } catch (error) {
+        req.log.error(error.message);
         res.status(500).json(serverErrorMessage);
+    }
+});
+
+app.post('/api/sendOtp', verifyApiKey, async (req, res) => {
+    try {
+        const user_email = req.body.email;
+
+        const apiRes = await MyAPI.sendOtp(user_email);
+        if (!apiRes.success) {
+            logger.error(apiRes.message);
+            return res.status(400).json(apiRes);
+        }
+
+        logger.info(apiRes);
+        return res.status(200).json(apiRes);
+    } catch (error) {
+        logger.error(error.message);
+        return res.status(500).json({
+            success: false,
+            errorMessage: error.message
+        })
     }
 });
 
 //* create product
 //? status : good
-app.post('/api/createProduct', apiKeyVerify, async (req, res) => {
+app.post('/api/createProduct', verifyApiKey, async (req, res) => {
     console.log('createProduct');
     try {
         const { product_name, price, stocks, image, description, category_id } = req.body;
@@ -95,7 +173,7 @@ app.post('/api/createProduct', apiKeyVerify, async (req, res) => {
 
 //* create category
 //? status : good
-app.post('/api/createCategory', apiKeyVerify, async (req, res) => {
+app.post('/api/createCategory', verifyApiKey, async (req, res) => {
     console.log('createCategory');
     try {
         const { category_name, description } = req.body;
@@ -129,49 +207,6 @@ app.post('/api/uploadImage', upload.single('image'), async (req, res) => {
     }
 });
 
-//* login
-//? status : good
-app.post('/api/login', apiKeyVerify, async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        const user = await MyAPI.getUserBy('email', email);
-
-        console.log(user);
-
-        if (user.length === 0) {
-            return res.status(404).json({
-                success: false,
-                errorMessage: "Can not find your email, Please check"
-            });
-        }
-
-        const isValid = await MyAPI.comparePassword(password, user.password);
-        if (!isValid) {
-            return res.status(400).json({
-                success: false,
-                errorMessage: "Invalid password"
-            })
-        }
-
-        const token = generateToken(user);
-
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: false,
-            maxAge: 1000 * 60 * 60 * 24
-        });
-
-        res.status(200).json({
-            success: true,
-            successMessage: "Logged in successfully"
-        });
-
-    } catch (error) {
-        console.log('/api/login => ', error);
-        res.status(500).json(serverErrorMessage);
-    }
-});
-
 //* logout
 //? status : good
 app.get('/api/logout', verifyToken, async (req, res) => {
@@ -193,7 +228,7 @@ app.get('/api/logout', verifyToken, async (req, res) => {
 });
 
 /*
- * write a app.post createCarts
+ * write a app.post createCarts  
  * create collection orders, order_items, payments, shipping
  TODO: write a app.post orders, order_items, payments, shipping
 */
@@ -216,7 +251,7 @@ app.post('/api/createCart', verifyToken, async (req, res) => {
 
 //* get all products
 //? status : good
-app.get('/api/getAllProducts', apiKeyVerify, async (req, res) => {
+app.get('/api/getAllProducts', verifyApiKey, async (req, res) => {
     try {
         const apiRes = await MyAPI.getAllProduct();
         if (apiRes.success) {
@@ -299,7 +334,7 @@ app.get('/api/getCart', verifyToken, async (req, res) => {
 });
 
 //* delete cart
-//! status : in dev
+//? status : good
 app.delete('/api/deleteCart', verifyToken, async (req, res) => {
     const product_id = req.body.product_id;
     const user_id = req.user.id;
@@ -315,6 +350,27 @@ app.delete('/api/deleteCart', verifyToken, async (req, res) => {
             errorMessage: error.message
         });
     }
+});
+
+app.get('/api/getUserData', verifyToken, async (req, res) => {
+    try {
+        const user_email = req.user.email;
+
+        const apiRes = await MyAPI.getUserBy('email', user_email);
+        console.log('User data: ',apiRes);
+        res.status(200).json(apiRes);
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            errorMessage: error.message
+        });
+    }
+});
+
+//* createOrder
+//! status : in dev
+app.post('/api/createOrder', verifyToken, async (req, res) => {
+
 });
 
 // app.post('/api/createOrders')

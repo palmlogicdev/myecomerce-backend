@@ -1,41 +1,14 @@
 const db = require('../config/firebase.js');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const { addAbortListener } = require('events');
+const nodemailer = require('nodemailer');
+const logger = require('../config/winston.js');
 
 const usersCollection = db.collection('users');
 const productsCollection = db.collection('products');
 const categoryCollection = db.collection('category');
 const cartCollection = db.collection('carts');
 const blacklist_tokenCollection = db.collection('blacklist_token');
-
-let user = {
-    firstname: '', 
-    lastname: '',
-    phoneNumber: '',
-    email: '',
-    gender: '',
-    country: '',
-    province: '',
-    address: '',
-    password: '',
-    is_email_verified: false, // defualt false
-    create_at: Date.now(),
-    reset_token: crypto.randomBytes(32).toString('hex'),
-    reset_token_expire: Date.now() + 1000 * 60 * 60 * 48,
-    status: 'un_verified',
-    role: 'user'
-};
-
-let product = {
-    product_name: '',
-    description: '',
-    price: 0,
-    stocks: 0,
-    image: '',
-    category_id: '',
-    create_at: Date.now()
-};
 
 let category = {
     category_name: '',
@@ -63,12 +36,33 @@ class MyAPI {
         this.db = db;
     }
 
+    //* MyAPI.createUser
     async createUser({ firstname, lastname, phoneNumber, email, gender, country, province, address, password }) {
+        let user = {
+            firstname: '', 
+            lastname: '',
+            phoneNumber: '',
+            email: '',
+            gender: '',
+            country: '',
+            province: '',
+            address: '',
+            password: '',
+            is_email_verified: false, // defualt false
+            create_at: Date.now(),
+            reset_token: crypto.randomBytes(32).toString('hex'),
+            reset_token_expire: Date.now() + 1000 * 60 * 60 * 48,
+            status: 'un_verified',
+            role: 'user'
+        };
+
+        logger.debug('Create user is working....');
+
         try {
             if (await check_email_is_exited(email)) {
                 return {
                     success: false,
-                    errorMessage: "Email is already in used"
+                    message: "Email is already in used"
                 };
             }
             const passwordSalt = 10;
@@ -84,24 +78,36 @@ class MyAPI {
             user.address = address;
             user.password = passwordHash;
 
+            logger.debug(`User data : ${JSON.stringify(user)}`);
+
             await usersCollection.add(user);
 
             return {
                 success: true,
-                successMessage: "Inserted success Please login",
+                message: "Inserted success Please login",
                 data: user
             };
 
         } catch (error) {
-            console.log('CreateUser: ', error);
             return {
                 success: false,
-                errorMessage: "Can not create user please try again"
+                message: "Cannot create user please try again"
             };
         }
     }
 
     async createProduct({product_name, price, stocks, image, description, category_id}) {
+
+        let product = {
+            product_name: '',
+            description: '',
+            price: 0,
+            stocks: 0,
+            image: '',
+            category_id: '',
+            create_at: Date.now()
+        };
+
         try {
             product.product_name = product_name;
             product.price = price;
@@ -114,14 +120,14 @@ class MyAPI {
 
             return {
                 success: true,
-                successMessage: "Inserted product successfully",
+                message: "Inserted product successfully",
                 product
             }
         } catch (error) {
             console.log('Create product: ', error);
             return {
                 success: false,
-                errorMessage: "Can not create product, Please check server"
+                message: "Can not create product, Please check server"
             };
         }
     }
@@ -145,7 +151,7 @@ class MyAPI {
             console.log('Create category: ', error);
             return {
                 success: false,
-                errorMessage: "Can not create category, Please check server"
+                message: "Can not create category, Please check server"
             };
         }
     }
@@ -155,12 +161,12 @@ class MyAPI {
             if (!req.file) {
                 return {
                     success: false,
-                    errorMessage: "Unable to upload your photo. Please try again"
+                    message: "Unable to upload your photo. Please try again"
                 }
             } else {
                 return {
                     success: true,
-                    successMessage: "Your photo has been uploaded successfully",
+                    message: "Your photo has been uploaded successfully",
                     filename: req.file.filename
                 }
             }
@@ -168,7 +174,7 @@ class MyAPI {
             console.log('upload image: ', error);
             return {
                 success: false,
-                errorMessage: "Can not upload photo, Please try again"
+                message: "Can not upload photo, Please try again"
             }
         }
     }
@@ -184,7 +190,7 @@ class MyAPI {
             console.log('get user by: ', error);
             return {
                 success: false,
-                errorMessage: "Can not get user, Please try again"
+                message: "Can not get user, Please try again"
             }
         }
     }
@@ -237,7 +243,7 @@ class MyAPI {
 
                 return {
                     success: true,
-                    successMessage: 'Create cart successfully',
+                    message: 'Create cart successfully',
                     id: snapshot.id
                 };
             } else {
@@ -276,14 +282,14 @@ class MyAPI {
 
                 return {
                     success: true,
-                    successMessage: "Update cart successfully"
+                    message: "Update cart successfully"
                 }
             }
         } catch (error) {
             console.log("create cart : ", error);
             return {
                 success: false,
-                errorMessage: 'Can not update cart'
+                message: 'Can not update cart'
             }
         }
     }
@@ -300,13 +306,13 @@ class MyAPI {
             await blacklist_tokenCollection.doc(tokenHash).set(newRovoke);
             return {
                 success: true,
-                successMessage: "Logged out successfully"
+                message: "Logged out successfully"
             }
         } catch (error) {
             console.log('Logout : ', error);
             return {
                 success: false,
-                errorMessage: "Can not logout, Please check server"
+                message: "Can not logout, Please check server"
             };
         }
     }
@@ -328,7 +334,7 @@ class MyAPI {
             console.log('Get all product :', error);
             return {
                 success: false,
-                errorMessage: error.message
+                message: error.message
             }
         }
     }
@@ -366,7 +372,7 @@ class MyAPI {
         try {
             const snapshot = await cartCollection.where('user_id', '==', user_id).get();
 
-            if (snapshot.empty) return { success: false, errorMessage: 'Cart not found' };
+            if (snapshot.empty) return { success: false, message: 'Cart not found' };
 
             const cartDoc = snapshot.docs[0];
             const cartData = cartDoc.data();
@@ -377,10 +383,77 @@ class MyAPI {
 
             return {
                 success: true,
-                successMessage: "Delete cart"
+                message: "Delete cart"
             }
         } catch (error) {
             console.log('deleteCart error: ', error);
+            return [];
+        }
+    }
+
+    async sendOtp(to) {
+        const otp = Math.floor(10000 + Math.random() * 90000);
+
+        const htmlTemplate = `
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <style>
+                    .otp {
+                        display: inline-block;
+                        margin: 20px 0;
+                        padding: 15px 25px;
+                        font-size: 28px;
+                        font-weight: bold;
+                        letter-spacing: 5px;
+                        color: #ffffff;
+                        background-color: #4a90e2;
+                        border-radius: 8px;
+                    }
+                </style>
+            </head>
+            <body>
+                <p>Hello,</p>
+                <p>Your OTP is:</p>
+                <div class="otp">${otp}</div>
+                <p>This OTP is valid for 5 minutes.</p>
+            </body>
+            </html>
+        `;
+
+        const transpoter = nodemailer.createTransport({
+            secure: true,
+            host: 'smtp.gmail.com',
+            port: 465,
+            auth: {
+                user: 'palmlogicdev@gmail.com',
+                pass: 'jjzrunebtotytoom'
+            }
+        });
+
+        function sendMail(to) {
+            transpoter.sendMail({
+                from: 'palmlogicdev@gmail.com',
+                to: to,
+                subject: 'Test',
+                html: htmlTemplate
+            }, (err, info) => {
+                if (err) {
+                    console.log('Error sending email: ', err);
+                } else {
+                    console.log('Email sent: ', info.response);
+                }
+            });
+        }
+
+        try {
+            sendMail(to);
+            return {
+                success: true,
+                message: `Email has been sent to ${to}`
+            }
+        } catch (error) {
+            console.log('Send mail: ', error);
             return [];
         }
     }
