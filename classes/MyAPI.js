@@ -9,6 +9,7 @@ const productsCollection = db.collection('products');
 const categoryCollection = db.collection('category');
 const cartCollection = db.collection('carts');
 const blacklist_tokenCollection = db.collection('blacklist_token');
+const otpCollection = db.collection('otp');
 
 let category = {
     category_name: '',
@@ -34,6 +35,27 @@ async function check_email_is_exited(email) {
 class MyAPI {
     constructor() {
         this.db = db;
+    }
+
+    async checkEmailIsExited(email) {
+        try {
+            if (await check_email_is_exited(email)) {
+                return {
+                    success: false,
+                    message: "Email is already in used"
+                };
+            }
+
+            return {
+                success: true,
+                message: "Email is available"
+            }
+        } catch (error) {
+            return {
+                success: false,
+                message: 'Failed to check email'
+            }
+        }
     }
 
     //* MyAPI.createUser
@@ -392,69 +414,117 @@ class MyAPI {
     }
 
     async sendOtp(to) {
-        const otp = Math.floor(10000 + Math.random() * 90000);
+        try {
+            const otp = Math.floor(10000 + Math.random() * 90000);
 
-        const htmlTemplate = `
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <style>
-                    .otp {
-                        display: inline-block;
-                        margin: 20px 0;
-                        padding: 15px 25px;
-                        font-size: 28px;
-                        font-weight: bold;
-                        letter-spacing: 5px;
-                        color: #ffffff;
-                        background-color: #4a90e2;
-                        border-radius: 8px;
-                    }
-                </style>
-            </head>
-            <body>
-                <p>Hello,</p>
-                <p>Your OTP is:</p>
-                <div class="otp">${otp}</div>
-                <p>This OTP is valid for 5 minutes.</p>
-            </body>
-            </html>
-        `;
-
-        const transpoter = nodemailer.createTransport({
-            secure: true,
-            host: 'smtp.gmail.com',
-            port: 465,
-            auth: {
-                user: 'palmlogicdev@gmail.com',
-                pass: 'jjzrunebtotytoom'
+            const otpToSend = {
+                email: to,
+                otp,
+                expire: Date.now() + 1000 * 60 * 5,
+                isUsed: false
             }
-        });
 
-        function sendMail(to) {
-            transpoter.sendMail({
-                from: 'palmlogicdev@gmail.com',
-                to: to,
-                subject: 'Test',
-                html: htmlTemplate
-            }, (err, info) => {
-                if (err) {
-                    console.log('Error sending email: ', err);
-                } else {
-                    console.log('Email sent: ', info.response);
+            await otpCollection.add(otpToSend);
+
+            const htmlTemplate = `
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <style>
+                        .otp {
+                            display: inline-block;
+                            margin: 20px 0;
+                            padding: 15px 25px;
+                            font-size: 28px;
+                            font-weight: bold;
+                            letter-spacing: 5px;
+                            color: #ffffff;
+                            background-color: #4a90e2;
+                            border-radius: 8px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <p>Hello,</p>
+                    <p>Your OTP is:</p>
+                    <div class="otp">${otp}</div>
+                    <p>This OTP is valid for 5 minutes.</p>
+                </body>
+                </html>
+            `;
+
+            const transpoter = nodemailer.createTransport({
+                secure: true,
+                host: 'smtp.gmail.com',
+                port: 465,
+                auth: {
+                    user: 'palmlogicdev@gmail.com',
+                    pass: 'jjzrunebtotytoom'
                 }
             });
-        }
 
-        try {
-            sendMail(to);
-            return {
-                success: true,
-                message: `Email has been sent to ${to}`
+            function sendMail(to) {
+                transpoter.sendMail({
+                    from: 'palmlogicdev@gmail.com',
+                    to: to,
+                    subject: 'Test',
+                    html: htmlTemplate
+                }, (err, info) => {
+                    if (err) {
+                        console.log('Error sending email: ', err);
+                    } else {
+                        console.log('Email sent: ', info.response);
+                    }
+                });
+            }
+
+            try {
+                sendMail(to);
+                return {
+                    success: true,
+                    message: `Email has been sent to ${to}`
+                }
+            } catch (error) {
+                console.log('Send mail: ', error);
+                return [];
             }
         } catch (error) {
-            console.log('Send mail: ', error);
-            return [];
+            return {
+                success: false,
+                message: 'Failed to send email'
+            }
+        }
+    }
+
+    async verifyOtp(otp, email) {
+        const snapshot = await  otpCollection.where('otp', '==', otp).where('email', '==', email).where('isUsed', '==', false).get();
+        if (snapshot.empty) {
+            return {
+                success: false,
+                message: 'OTP not found or already expired'
+            }
+        } else {
+            const doc = snapshot.docs[0];
+            const data = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            console.log(data);
+            console.log('ID : ', doc.id);
+
+            if (Date.now() > doc.expire) {
+                return {
+                    success: false,
+                    message: 'Otp was expired'
+                }
+            }
+
+            await otpCollection.doc(doc.id).update({ isUsed: true });
+
+            return {
+                success: true,
+                message: 'OTP verified'
+            }
         }
     }
 }

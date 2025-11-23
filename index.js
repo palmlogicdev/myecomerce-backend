@@ -68,6 +68,26 @@ app.post('/api/test', verifyApiKey, async (req, res) => {
     const token = generateToken(user);
 });
 
+app.post('/api/checkEmail', verifyApiKey, async (req, res) => {
+    try {
+        const email = req.body.email;
+        logger.debug(email);
+
+        const apiRes = await MyAPI.checkEmailIsExited(email);
+
+        if (!apiRes.success) {
+            logger.error(apiRes.message);
+            return res.status(409).json(apiRes);
+        } 
+
+        logger.info(apiRes.message);
+        return res.status(200).json(apiRes);
+    } catch (error) {
+        logger.info(error.message);
+        return res.status(500).json(serverErrorMessage);
+    }
+});
+
 //* create user
 //? status : good
 app.post('/api/register', verifyApiKey, async (req, res) => {
@@ -80,7 +100,7 @@ app.post('/api/register', verifyApiKey, async (req, res) => {
             return res.status(400).json(apiRes);
         }
         
-        req.log.info(apiRes.message);
+        logger.info(apiRes.message);
         return res.status(200).json(apiRes);
 
     } catch (error) {
@@ -148,10 +168,30 @@ app.post('/api/sendOtp', verifyApiKey, async (req, res) => {
         logger.error(error.message);
         return res.status(500).json({
             success: false,
-            errorMessage: error.message
+            message: error.message
         })
     }
 });
+
+app.post('/api/verifyOtp', verifyApiKey, async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        const apiRes = await MyAPI.verifyOtp(otp, email);
+
+        logger.info(apiRes);
+        if (apiRes.success) {
+            return res.status(200).json(apiRes);
+        }
+        return res.status(400).json(apiRes);
+
+    } catch (error) {
+        logger.error(error.message);
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+})
 
 //* create product
 //? status : good
