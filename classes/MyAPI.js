@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const logger = require('../config/winston.js');
+require('dotenv').config();
 
 const usersCollection = db.collection('users');
 const productsCollection = db.collection('products');
@@ -459,7 +460,7 @@ class MyAPI {
                 port: 465,
                 auth: {
                     user: 'palmlogicdev@gmail.com',
-                    pass: 'jjzrunebtotytoom'
+                    pass: process.env.GOOGLE_APP_PASS
                 }
             });
 
